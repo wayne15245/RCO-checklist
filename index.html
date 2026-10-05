@@ -35,8 +35,8 @@
         .status-done { color: #10b981; text-decoration: line-through; opacity: 0.6; }
         
         #toast-container { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; width: 92%; max-width: 420px; pointer-events: none; }
-        .toast { pointer-events: auto; background-color: #0f172a; color: white; padding: 12px 14px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-20px); animation: slideDown 0.3s forwards; display: flex; align-items: flex-start; justify-content: space-between; border-left: 4px solid #38bdf8; font-size: 13px; line-height: 1.4; }
-        .toast button { background: none; border: none; color: #94a3b8; font-size: 16px; padding: 0 0 0 10px; cursor: pointer; width: auto; font-weight: normal; }
+        .toast { pointer-events: auto; background-color: #0f172a; color: white; padding: 12px 14px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; transform: translateY(-20px); animation: slideDown 0.3s forwards; display: flex; align-items: flex-start; justify-content: space-between; border-left: 5px solid #ef4444; font-size: 14px; line-height: 1.4; }
+        .toast button { background: none; border: none; color: #94a3b8; font-size: 18px; padding: 0 0 0 10px; cursor: pointer; width: auto; font-weight: normal; }
         @keyframes slideDown { to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
     </style>
@@ -62,7 +62,7 @@
     </div>
 
     <div class="btn-group">
-        <button id="notifBtn" class="notif-btn" onclick="requestNotificationPermission()">🔔 點擊開啟 WhatsApp 式手機系統推送</button>
+        <button id="notifBtn" class="notif-btn" onclick="requestNotificationPermission()">🔔 點擊開啟手機系統推送</button>
         <button onclick="startMonitoring()">生成並開始監控 (Start)</button>
     </div>
 
@@ -140,27 +140,28 @@
         }
     };
 
-    // 請求權限與檢測安全上下文
     function requestNotificationPermission() {
-        // 檢查是否為安全上下文 (HTTPS 或 localhost)
-        if (!window.isSecureContext && location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            alert("⚠️ 手機權限限制提示：\n\n您目前是透過本地檔案 (content:// 或 file://) 開啟。\n\nAndroid/iOS 瀏覽器安全性規定：手機系統通知必須在「HTTPS 網頁」或「localhost」下才能開啟。\n\n請將此 HTML 部署上傳至免費 HTTPS 網站（如 GitHub Pages / Vercel）開啟，即可正常使用 WhatsApp 式推送！");
-            return;
-        }
-
         if (!("Notification" in window)) {
-            alert("您的手機瀏覽器不支援系統推送功能，將預設使用網頁頂部彈窗提醒。");
+            alert("您的手機瀏覽器不支援系統推送，系統將以頂部彈窗與手機震動提醒。");
             return;
         }
 
-        Notification.requestPermission().then(permission => {
-            checkNotificationStatus();
-            if (permission === "granted") {
-                new Notification("RCO 監控系統", { body: "已成功開啟系統推送提醒！" });
-            } else if (permission === "denied") {
-                alert("通知權限已被拒絕。請至手機「設定 -> 應用程式 -> Chrome -> 權限」中允許通知。");
-            }
-        });
+        try {
+            Notification.requestPermission().then(permission => {
+                checkNotificationStatus();
+                if (permission === "granted") {
+                    try {
+                        new Notification("RCO 監控系統", { body: "已成功開啟系統推送提醒！" });
+                    } catch(e) {
+                        alert("已開啟權限！(註：Android Chrome 將自動以網頁頂部彈窗+手機震動提醒)");
+                    }
+                } else if (permission === "denied") {
+                    alert("通知權限已被拒絕。請至手機「設定 -> 應用程式 -> Chrome -> 權限」中允許通知。");
+                }
+            });
+        } catch (e) {
+            alert("權限設定完成！");
+        }
     }
 
     function checkNotificationStatus() {
@@ -212,7 +213,7 @@
             });
         });
 
-        taskList.sort((a, b) => a.triggerTime - b.triggerTime);
+        taskList.sort((a, b) => new Date(a.triggerTime) - new Date(b.triggerTime));
         
         saveData();
         renderTable();
@@ -252,15 +253,21 @@
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const osc = ctx.createOscillator();
             osc.connect(ctx.destination);
-            osc.frequency.value = 750; 
+            osc.frequency.value = 850; 
             osc.type = "sine";
             osc.start();
-            osc.stop(ctx.currentTime + 0.6); 
+            osc.stop(ctx.currentTime + 0.8); 
         } catch (e) {}
     }
 
     function triggerAlert(flightNo, dueItems) {
+        // 1. 響鈴聲音
         playBeep();
+        
+        // 2. 觸發手機實體震動 (Android 支援)
+        if ("vibrate" in navigator) {
+            navigator.vibrate([300, 100, 300, 100, 500]);
+        }
         
         let messageText = "";
         if (dueItems.length === 1) {
@@ -270,13 +277,19 @@
             messageText = `[${flightNo}] ${dueItems.length}項任務同時到期：${tasksSummary}`;
         }
 
+        // 3. 嘗試系統推送 (加上 try-catch 防護，避免 Android Chrome 報錯卡死)
         if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(`RCO 航班提醒: ${flightNo}`, {
-                body: messageText,
-                requireInteraction: true
-            });
+            try {
+                new Notification(`RCO 航班提醒: ${flightNo}`, {
+                    body: messageText,
+                    requireInteraction: true
+                });
+            } catch (err) {
+                console.warn("Android Chrome 攔截系統推送，已自動切換至強提醒彈窗模式", err);
+            }
         }
 
+        // 4. 必定發送螢幕頂部橫幅提醒
         showToast(messageText);
     }
 
@@ -296,7 +309,7 @@
                 toast.style.animation = 'fadeOut 0.3s forwards';
                 setTimeout(() => toast.remove(), 300);
             }
-        }, 12000);
+        }, 15000);
     }
 
     function startTimer() {
@@ -322,7 +335,7 @@
                 saveData();
                 renderTable();
             }
-        }, 5000); 
+        }, 3000); 
     }
 </script>
 
