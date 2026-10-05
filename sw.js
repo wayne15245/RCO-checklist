@@ -1,4 +1,4 @@
-// RCO Service Worker - 處理 Android 原生推送通知
+// RCO Service Worker - PWA 安裝與系統推送支持
 self.addEventListener('install', (event) => {
     self.skipWaiting();
 });
@@ -7,18 +7,23 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(self.clients.claim());
 });
 
+// Android Chrome PWA 可安裝性認證必要的網路攔截事件
+self.addEventListener('fetch', (event) => {
+    event.respondWith(
+        fetch(event.request).catch(() => caches.match(event.request))
+    );
+});
+
 // 接收主頁面發送的通知指令
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'PUSH_NOTIFICATION') {
         const title = event.data.title;
         const options = event.data.options;
-        
-        // 觸發 Android 系統原生橫幅通知 (WhatsApp 樣式)
         self.registration.showNotification(title, options);
     }
 });
 
-// 點擊通知橫幅時自動打開/切換回網頁
+// 點擊通知橫幅時自動打開/切換回 App
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     event.waitUntil(
