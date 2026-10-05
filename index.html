@@ -333,30 +333,41 @@
             }
         }, 15000);
     }
+// 當螢幕點亮或重新開啟 App 時，立刻強制進行時間校對與補發
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            checkAndTriggerAlerts();
+        }
+    });
+
+    // 獨立校對與觸發提醒的邏輯（確保背景與喚醒時均可呼叫）
+    function checkAndTriggerAlerts() {
+        const now = new Date();
+        let dueItems = [];
+
+        taskList.forEach(item => {
+            if (!item.done && !item.notified) {
+                const triggerTime = new Date(item.triggerTime);
+                if (now >= triggerTime) {
+                    item.notified = true;
+                    dueItems.push(item);
+                }
+            }
+        });
+
+        if (dueItems.length > 0) {
+            const flightNo = document.getElementById('flightNo').value.toUpperCase();
+            triggerAlert(flightNo, dueItems);
+            saveData();
+            renderTable();
+        }
+    }
 
     function startTimer() {
         if (checkInterval) clearInterval(checkInterval);
         
         checkInterval = setInterval(() => {
-            const now = new Date();
-            let dueItems = [];
-
-            taskList.forEach(item => {
-                if (!item.done && !item.notified) {
-                    const triggerTime = new Date(item.triggerTime);
-                    if (now >= triggerTime) {
-                        item.notified = true;
-                        dueItems.push(item);
-                    }
-                }
-            });
-
-            if (dueItems.length > 0) {
-                const flightNo = document.getElementById('flightNo').value.toUpperCase();
-                triggerAlert(flightNo, dueItems);
-                saveData();
-                renderTable();
-            }
+            checkAndTriggerAlerts();
         }, 3000); 
     }
 </script>
