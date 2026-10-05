@@ -3,9 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- PWA 相容設定，讓 Android 將其識別為獨立 App -->
+    
+    <!-- PWA 關鍵連結與設定 -->
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://github.githubassets.com/favicons/favicon.png">
+
     <title>RCO Flight Checklist</title>
     <style>
         * { box-sizing: border-box; }
@@ -65,7 +71,7 @@
     </div>
 
     <div class="btn-group">
-        <button id="notifBtn" class="notif-btn" onclick="requestNotificationPermission()">🔔 點擊開啟 WhatsApp 式手機系統推送</button>
+        <button id="notifBtn" class="notif-btn" onclick="requestNotificationPermission()">🔔 點擊開啟 WhatsApp 式原生橫幅推送</button>
         <button onclick="startMonitoring()">生成並開始監控 (Start)</button>
     </div>
 
@@ -90,7 +96,6 @@
 <script>
     let swRegistration = null;
 
-    // 註冊 Service Worker (實現 Android 原生系統層推送)
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').then(reg => {
             swRegistration = reg;
@@ -267,7 +272,6 @@
         } catch (e) {}
     }
 
-    // 發送 Android 系統層級橫幅推送 (WhatsApp 樣式)
     function sendSystemNotification(title, body) {
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({
@@ -307,10 +311,7 @@
             messageText = `[${flightNo}] ${dueItems.length}項任務同時到期：${tasksSummary}`;
         }
 
-        // 觸發 Android 原生橫幅推送
         sendSystemNotification(`RCO 航班提醒: ${flightNo}`, messageText);
-
-        // 頁面內頂部彈窗備份
         showToast(messageText);
     }
 
