@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RCO Flight Checklist</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f6f9; padding: 12px; margin: 0; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+        h1 { color: #1e293b; text-align: center; margin-top: 5px; margin-bottom: 15px; font-size: 20px; font-weight: 700; }
+        
+        .form-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; }
+        @media (min-width: 600px) {
+            .form-group { flex-direction: row; }
+        }
+        .input-field { flex: 1; }
+        label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px; color: #475569; }
+        input[type="text"], input[type="datetime-local"] { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; background-color: #fff; appearance: none; -webkit-appearance: none; }
+        
+        .btn-group { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        button { background-color: #2563eb; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; width: 100%; transition: background 0.2s; }
+        button:active { background-color: #1d4ed8; }
+        
+        .notif-btn { background-color: #d97706; font-size: 14px; padding: 10px; }
+        .notif-btn.enabled { background-color: #10b981; }
+
+        .table-wrapper { overflow-x: auto; margin-top: 15px; -webkit-overflow-scrolling: touch; border: 1px solid #e2e8f0; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; min-width: 480px; }
+        th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; text-align: center; font-size: 13px; }
+        th { background-color: #f8fafc; color: #475569; font-weight: 600; }
+        
+        .status-pending { color: #d97706; font-weight: bold; }
+        .status-alerted { color: #ef4444; font-weight: bold; }
+        .status-done { color: #10b981; text-decoration: line-through; opacity: 0.6; }
+        
+        #toast-container { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; width: 92%; max-width: 420px; pointer-events: none; }
+        .toast { pointer-events: auto; background-color: #0f172a; color: white; padding: 12px 14px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-20px); animation: slideDown 0.3s forwards; display: flex; align-items: flex-start; justify-content: space-between; border-left: 4px solid #38bdf8; font-size: 13px; line-height: 1.4; }
+        .toast button { background: none; border: none; color: #94a3b8; font-size: 16px; padding: 0 0 0 10px; cursor: pointer; width: auto; font-weight: normal; }
+        @keyframes slideDown { to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>RCO Checklist Monitor</h1>
+    
+    <div class="form-group">
+        <div class="input-field">
+            <label>Flight No. (例: EK9832)</label>
+            <input type="text" id="flightNo" placeholder="輸入航班號" oninput="saveData()" autocapitalize="characters" autocomplete="off">
+        </div>
+        <div class="input-field">
+            <label>ETA</label>
+            <input type="datetime-local" id="eta" onchange="saveData()">
+        </div>
+        <div class="input-field">
+            <label>ETD</label>
+            <input type="datetime-local" id="etd" onchange="saveData()">
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button id="notifBtn" class="notif-btn" onclick="requestNotificationPermission()">🔔 點擊開啟 WhatsApp 式手機系統推送</button>
+        <button onclick="startMonitoring()">生成並開始監控 (Start)</button>
+    </div>
+
+    <div class="table-wrapper">
+        <table id="checklistTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>完成</th>
+                    <th>任務 (Task)</th>
+                    <th>服務商</th>
+                    <th>時間</th>
+                    <th>狀態</th>
+                </tr>
+            </thead>
+            <tbody id="checklistBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+    const providerMatrix = {
+        "2G": { "Cleaning": "HAECO", "Toilet Service": "HAECO", "Catering": "GGL", "Refueling": "WFS", "Push Back Truck": "HAECO", "Document": "HACTL", "NOTOC": "HACTL" },
+        "CP": { "Cleaning": "HAECO", "Toilet Service": "HAECO", "Catering": "GGL", "Refueling": "AFSC", "Push Back Truck": "HAECO", "Document": "HACTL", "NOTOC": "HACTL" },
+        "MH": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "CPCS", "Refueling": "AFSC", "Push Back Truck": "PAPAS", "Document": "HACTL", "NOTOC": "HACTL", "Final Fuel To LC": "RCO" },
+        "SV": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "LSG", "Refueling": "WFS", "Push Back Truck": "PAPAS", "Document": "HACTL", "NOTOC": "HACTL", "Final Fuel To LC": "RCO", "Flight Plan": "HAS" },
+        "HJ": { "Cleaning": "HAECO", "Toilet Service": "HAECO", "Catering": "GGL", "Refueling": "WFS", "Push Back Truck": "HAECO", "Document": "HACTL", "NOTOC": "HACTL", "Final Fuel To LC": "RCO" },
+        "EK": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "CPCS", "Refueling": "WFS", "Push Back Truck": "HAECO", "Document": "MCAS", "NOTOC": "MCAS", "Crew Bus": "HAS", "Flight Plan": "HAS" },
+        "MP": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "GGL", "Refueling": "CNAF", "Push Back Truck": "PAPAS", "Document": "MCAS", "NOTOC": "HACTL" }
+    };
+
+    const defaultProviders = {
+        "Check Defect": "HACTL",
+        "Crew Bus": "HACTL", 
+        "TOBT": "HACTL", 
+        "Flight Plan": "HACTL"
+    };
+
+    const rules = [
+        { task: "Check Defect", base: "ETA", offset: 10 },
+        { task: "Crew Bus", base: "ETA", offset: 10 },
+        { task: "Flight Plan", base: "ETD", offset: -80 },
+        { task: "Final Fuel To LC", base: "ETD", offset: -60 },
+        { task: "Cleaning", base: "ETD", offset: -60 },
+        { task: "Toilet Service", base: "ETD", offset: -60 },
+        { task: "Catering", base: "ETD", offset: -60 },
+        { task: "Refueling", base: "ETD", offset: -60 },
+        { task: "Document", base: "ETD", offset: -30 },
+        { task: "NOTOC", base: "ETD", offset: -30 },
+        { task: "Push Back Truck", base: "ETD", offset: -15 },
+        { task: "TOBT", base: "ETD", offset: -5 }
+    ];
+
+    let checkInterval;
+    let taskList = [];
+
+    window.onload = function() {
+        checkNotificationStatus();
+        const savedData = localStorage.getItem('rco_data');
+        if (savedData) {
+            if (confirm("發現有上次未完成的航班監控紀錄！\n按「確定」清除舊紀錄開新局。\n按「取消」載入舊紀錄繼續工作。")) {
+                localStorage.removeItem('rco_data');
+            } else {
+                const data = JSON.parse(savedData);
+                document.getElementById('flightNo').value = data.flightNo || '';
+                document.getElementById('eta').value = data.eta || '';
+                document.getElementById('etd').value = data.etd || '';
+                if(data.taskList && data.taskList.length > 0) {
+                    taskList = data.taskList;
+                    renderTable();
+                    startTimer();
+                }
+            }
+        }
+    };
+
+    // 請求權限與檢測安全上下文
+    function requestNotificationPermission() {
+        // 檢查是否為安全上下文 (HTTPS 或 localhost)
+        if (!window.isSecureContext && location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            alert("⚠️ 手機權限限制提示：\n\n您目前是透過本地檔案 (content:// 或 file://) 開啟。\n\nAndroid/iOS 瀏覽器安全性規定：手機系統通知必須在「HTTPS 網頁」或「localhost」下才能開啟。\n\n請將此 HTML 部署上傳至免費 HTTPS 網站（如 GitHub Pages / Vercel）開啟，即可正常使用 WhatsApp 式推送！");
+            return;
+        }
+
+        if (!("Notification" in window)) {
+            alert("您的手機瀏覽器不支援系統推送功能，將預設使用網頁頂部彈窗提醒。");
+            return;
+        }
+
+        Notification.requestPermission().then(permission => {
+            checkNotificationStatus();
+            if (permission === "granted") {
+                new Notification("RCO 監控系統", { body: "已成功開啟系統推送提醒！" });
+            } else if (permission === "denied") {
+                alert("通知權限已被拒絕。請至手機「設定 -> 應用程式 -> Chrome -> 權限」中允許通知。");
+            }
+        });
+    }
+
+    function checkNotificationStatus() {
+        const btn = document.getElementById('notifBtn');
+        if ("Notification" in window && Notification.permission === "granted") {
+            btn.innerText = "✅ 已開啟手機系統推送功能";
+            btn.classList.add("enabled");
+        }
+    }
+
+    function saveData() {
+        const flightNo = document.getElementById('flightNo').value;
+        const eta = document.getElementById('eta').value;
+        const etd = document.getElementById('etd').value;
+        localStorage.setItem('rco_data', JSON.stringify({ flightNo, eta, etd, taskList }));
+    }
+
+    function getProvider(airlineCode, task) {
+        if (providerMatrix[airlineCode] && providerMatrix[airlineCode][task]) {
+            return providerMatrix[airlineCode][task];
+        }
+        return defaultProviders[task] || "N/A";
+    }
+
+    function startMonitoring() {
+        const flightNo = document.getElementById('flightNo').value.trim().toUpperCase();
+        const etaInput = document.getElementById('eta').value;
+        const etdInput = document.getElementById('etd').value;
+
+        if (!flightNo) return alert("請輸入航班號！");
+
+        const airlineCode = flightNo.substring(0, 2); 
+        taskList = [];
+
+        rules.forEach((rule, index) => {
+            const baseTimeStr = rule.base === 'ETA' ? etaInput : etdInput;
+            if (!baseTimeStr) return; 
+
+            const targetTime = new Date(baseTimeStr);
+            targetTime.setMinutes(targetTime.getMinutes() + rule.offset);
+
+            taskList.push({
+                id: index,
+                task: rule.task,
+                provider: getProvider(airlineCode, rule.task),
+                triggerTime: targetTime,
+                notified: false,
+                done: false
+            });
+        });
+
+        taskList.sort((a, b) => a.triggerTime - b.triggerTime);
+        
+        saveData();
+        renderTable();
+        startTimer();
+    }
+
+    function renderTable() {
+        document.getElementById('checklistTable').style.display = 'table';
+        const tbody = document.getElementById('checklistBody');
+        tbody.innerHTML = '';
+
+        taskList.forEach((item, i) => {
+            const timeStr = new Date(item.triggerTime).toLocaleTimeString('zh-HK', { hour: '2-digit', minute: '2-digit' });
+            let statusHtml = item.done ? `<span class="status-done">已完成</span>` : 
+                             (item.notified ? `<span class="status-alerted">已提醒</span>` : `<span class="status-pending">等待中</span>`);
+            
+            tbody.innerHTML += `
+                <tr class="${item.done ? 'status-done' : ''}">
+                    <td><input type="checkbox" onchange="toggleDone(${i})" ${item.done ? 'checked' : ''}></td>
+                    <td><b>${item.task}</b></td>
+                    <td>${item.provider}</td>
+                    <td>${timeStr}</td>
+                    <td id="status-${i}">${statusHtml}</td>
+                </tr>
+            `;
+        });
+    }
+
+    function toggleDone(index) {
+        taskList[index].done = !taskList[index].done;
+        saveData();
+        renderTable();
+    }
+
+    function playBeep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            osc.connect(ctx.destination);
+            osc.frequency.value = 750; 
+            osc.type = "sine";
+            osc.start();
+            osc.stop(ctx.currentTime + 0.6); 
+        } catch (e) {}
+    }
+
+    function triggerAlert(flightNo, dueItems) {
+        playBeep();
+        
+        let messageText = "";
+        if (dueItems.length === 1) {
+            messageText = `[${flightNo}] 任務到期：${dueItems[0].task} (${dueItems[0].provider})`;
+        } else {
+            const tasksSummary = dueItems.map(i => `${i.task}(${i.provider})`).join("、");
+            messageText = `[${flightNo}] ${dueItems.length}項任務同時到期：${tasksSummary}`;
+        }
+
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(`RCO 航班提醒: ${flightNo}`, {
+                body: messageText,
+                requireInteraction: true
+            });
+        }
+
+        showToast(messageText);
+    }
+
+    function showToast(message) {
+        const container = document.getElementById('toast-container');
+        while (container.children.length >= 2) {
+            container.removeChild(container.firstChild);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `<span>🔔 ${message}</span> <button onclick="this.parentElement.style.animation='fadeOut 0.3s forwards'; setTimeout(()=>this.parentElement.remove(), 300)">✕</button>`;
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.style.animation = 'fadeOut 0.3s forwards';
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 12000);
+    }
+
+    function startTimer() {
+        if (checkInterval) clearInterval(checkInterval);
+        
+        checkInterval = setInterval(() => {
+            const now = new Date();
+            let dueItems = [];
+
+            taskList.forEach(item => {
+                if (!item.done && !item.notified) {
+                    const triggerTime = new Date(item.triggerTime);
+                    if (now >= triggerTime) {
+                        item.notified = true;
+                        dueItems.push(item);
+                    }
+                }
+            });
+
+            if (dueItems.length > 0) {
+                const flightNo = document.getElementById('flightNo').value.toUpperCase();
+                triggerAlert(flightNo, dueItems);
+                saveData();
+                renderTable();
+            }
+        }, 5000); 
+    }
+</script>
+
+</body>
+</html>
