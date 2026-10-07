@@ -198,7 +198,7 @@
         return defaultProviders[task] || "N/A";
     }
 
-    function startMonitoring() {
+    async function startMonitoring() {
         const flightNo = document.getElementById('flightNo').value.trim().toUpperCase();
         const etaInput = document.getElementById('eta').value;
         const etdInput = document.getElementById('etd').value;
@@ -216,7 +216,7 @@
             targetTime.setMinutes(targetTime.getMinutes() + rule.offset);
 
             taskList.push({
-                id: index,
+                id: index + 1,
                 task: rule.task,
                 provider: getProvider(airlineCode, rule.task),
                 triggerTime: targetTime,
@@ -229,7 +229,45 @@
         
         saveData();
         renderTable();
-        startTimer();
+
+        // 🌟 核心：一次性向 Android 系統註冊未來的原生鬧鐘通知
+        await scheduleAndroidNativeNotifications(flightNo);
+        
+        alert("已成功向 Android 系統註冊所有任務提醒！即使鎖屏/關閉 App 也能準時通知。");
+    }
+
+    // 調用 Android 原生系統鬧鐘 (AlarmManager)
+    async function scheduleAndroidNativeNotifications(flightNo) {
+        if (window.Capacitor && window.Capacitor.Plugins.LocalNotifications) {
+            const { LocalNotifications } = window.Capacitor.Plugins;
+
+            // 1. 請求 Android 原生通知與精確鬧鐘權限
+            await LocalNotifications.requestPermissions();
+
+            // 2. 取消舊有的通知排程
+            const pending = await LocalNotifications.getPending();
+            if (pending.notifications.length > 0) {
+                await LocalNotifications.cancel(pending);
+            }
+
+            // 3. 構建原生系統排程通知清單
+            const now = new Date();
+            const notifications = taskList
+                .filter(item => new Date(item.triggerTime) > now && !item.done)
+                .map(item => ({
+                    title: `RCO 航班提醒: ${flightNo}`,
+                    body: `[${flightNo}] 任務到期：${item.task} (${item.provider})`,
+                    id: item.id,
+                    schedule: { at: new Date(item.triggerTime) },
+                    smallIcon: "res://icon",
+                    iconColor: "#2563eb"
+                }));
+
+            // 4. 正式註冊至 Android 系統
+            if (notifications.length > 0) {
+                await LocalNotifications.schedule({ notifications });
+            }
+        }
     }
 
     function renderTable() {
