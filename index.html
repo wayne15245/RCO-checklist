@@ -111,7 +111,7 @@
         "SV": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "LSG", "Refueling": "WFS", "Push Back Truck": "PAPAS", "Document": "HACTL", "NOTOC": "HACTL", "Final Fuel To LC": "RCO", "Flight Plan": "HAS" },
         "HJ": { "Cleaning": "HAECO", "Toilet Service": "HAECO", "Catering": "GGL", "Refueling": "WFS", "Push Back Truck": "HAECO", "Document": "HACTL", "NOTOC": "HACTL", "Final Fuel To LC": "RCO" },
         "EK": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "CPCS", "Refueling": "WFS", "Push Back Truck": "HAECO", "Document": "MCAS", "NOTOC": "MCAS", "Crew Bus": "HAS", "Flight Plan": "HAS" },
-        "MP": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "GGL", "Refueling": "CNAF", "Push Back Truck": "PAPAS", "Document": "MCAS", "NOTOC": "HACTL" }
+        "MP": { "Cleaning": "PAPAS", "Toilet Service": "PAPAS", "Catering": "GGL", "Refueling": "CNAF", "Push Back Truck": "PAPAS", "Document": "HACTL", "NOTOC": "HACTL" }
     };
 
     const defaultProviders = {
@@ -291,7 +291,6 @@
                 importance: 5,                   // 5 = 最高優先級 (跳出橫幅 + 響鈴 + 震動)
                 visibility: 1,                   // 鎖屏完全可見
                 vibration: true,                 // 🌟 開啟震動
-                sound: null                      // 🌟 使用 Android 系統預設通知鈴聲
             });
 
             // 3. 取消舊有的通知排程
